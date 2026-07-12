@@ -1,4 +1,7 @@
-- 仕様はSPEC.mdを正とする   
+- 仕様はSPEC.mdを正とする（ただしPhase1で予定外の機能追加も多数あり。実装がSPEC.mdを上回っている場合、コードが実態）
 - 変更は小さい単位で区切り、都度動作確認を促す   
 - index.htmlをブラウザで開くだけで動く構成を維持する   
 - 大きな変更の前にgit commitする  
+- GitHubリポジトリ: https://github.com/fuku-1005/city-sim.git （origin, public）
+- GitHub Pages公開URL: https://fuku-1005.github.io/city-sim/ （外部/スマホ確認用。大きな機能追加後はpushして反映するか確認する）
+- 見た目の細部（色味・配置などの微調整）はClaudeの判断に任せてよい。大きく方向性が変わる変更のみ確認する
