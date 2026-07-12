@@ -147,7 +147,7 @@
     dirLight.intensity = sunI * 0.9 + 0.1; // 夜でも街灯代わりに最低限の明るさ
 
     const nightFactor = THREE.MathUtils.clamp(1 - sunI * 1.3, 0, 1);
-    streetlights.forEach((light) => {
+    streetlightGroups.forEach(({ light }) => {
       light.intensity = nightFactor * 0.9;
     });
   }
@@ -286,10 +286,12 @@
   const streetlightPoleGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6);
   const streetlightBulbMaterial = new THREE.MeshBasicMaterial({ color: 0xfff2b0, fog: false });
   const streetlightBulbGeometry = new THREE.SphereGeometry(0.08, 8, 8);
-  const streetlights = [];
+  const streetlightGroups = new Map();
 
   function addStreetlight(tileX, tileZ) {
-    if (streetlights.length >= MAX_STREETLIGHTS) return;
+    if (streetlightGroups.size >= MAX_STREETLIGHTS) return;
+    const key = tileKey(tileX, tileZ);
+    if (streetlightGroups.has(key)) return;
     const center = tileToWorldCenter(tileX, tileZ);
     const lx = center.x + TILE_SIZE * 0.4;
     const lz = center.z + TILE_SIZE * 0.4;
@@ -308,7 +310,16 @@
     light.position.set(lx, 0.9, lz);
     scene.add(light);
 
-    streetlights.push(light);
+    streetlightGroups.set(key, { group, light });
+  }
+
+  function removeStreetlight(tileX, tileZ) {
+    const key = tileKey(tileX, tileZ);
+    const entry = streetlightGroups.get(key);
+    if (!entry) return;
+    scene.remove(entry.group);
+    scene.remove(entry.light);
+    streetlightGroups.delete(key);
   }
 
   // 川の上を渡る道路（橋）
@@ -509,6 +520,7 @@
 
   let funds = 50000;
   let debt = 0;
+  let restoringState = false; // セーブデータ復元中は資金/隣接チェックをバイパスする
   let lastTaxIncome = 0;
   let lastMaintenanceExpense = 0;
   let roadCount = 0;
@@ -617,6 +629,7 @@
     advanceDate();
     updateHud();
     refreshHeatmapIfVisible();
+    saveGame();
   }
 
   const speedButtons = document.querySelectorAll('.speed-btn');
@@ -731,6 +744,18 @@
     });
   });
 
+  const saveStatusEl = document.getElementById('save-status');
+  document.getElementById('save-btn').addEventListener('click', () => {
+    const ok = saveGame();
+    saveStatusEl.textContent = ok ? '保存しました' : '保存に失敗しました';
+    setTimeout(() => { saveStatusEl.textContent = ''; }, 2500);
+  });
+  document.getElementById('load-btn').addEventListener('click', () => {
+    const ok = loadGame();
+    saveStatusEl.textContent = ok ? '読み込みました' : 'セーブデータがありません';
+    setTimeout(() => { saveStatusEl.textContent = ''; }, 2500);
+  });
+
   updateHud();
 
   function addRoad(tileX, tileZ) {
@@ -783,12 +808,13 @@
       scene.remove(pillar);
       bridgePillars.delete(key);
     }
+    removeStreetlight(tileX, tileZ);
     tileTypes[tileX][tileZ] = 'empty';
   }
 
   function addRail(tileX, tileZ) {
     if (railTiles[tileX][tileZ]) return;
-    if (railCount > 0 && !isAdjacentToRail(tileX, tileZ)) return;
+    if (!restoringState && railCount > 0 && !isAdjacentToRail(tileX, tileZ)) return;
     if (funds < RAIL_COST) return;
     railTiles[tileX][tileZ] = true;
     funds -= RAIL_COST;
@@ -1556,6 +1582,163 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
+  window.addEventListener('beforeunload', saveGame);
+
+  // --- セーブ／ロード（localStorage） ---
+  const SAVE_KEY = 'citySimSaveV1';
+
+  function serializeState() {
+    return {
+      version: 1,
+      tileTypes,
+      railTiles,
+      riverTiles,
+      buildingLevel,
+      stations: Array.from(stationGroups.keys()),
+      parks: Array.from(parkGroups.keys()),
+      govs: Array.from(govGroups.keys()),
+      streetlights: Array.from(streetlightGroups.keys()),
+      funds,
+      debt,
+      gameDate: { year: gameDate.year, month: gameDate.month },
+      dayTime,
+    };
+  }
+
+  function saveGame() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(serializeState()));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function clearSceneObjects() {
+    roadMeshes.forEach((m) => scene.remove(m));
+    roadMeshes.clear();
+    railGroups.forEach((g) => scene.remove(g));
+    railGroups.clear();
+    riverMeshes.forEach((m) => scene.remove(m));
+    riverMeshes.clear();
+    bridgePillars.forEach((p) => scene.remove(p));
+    bridgePillars.clear();
+    zoneMeshes.forEach((m) => scene.remove(m));
+    zoneMeshes.clear();
+    buildingMeshes.forEach((m) => scene.remove(m));
+    buildingMeshes.clear();
+    stationGroups.forEach((g) => scene.remove(g));
+    stationGroups.clear();
+    parkGroups.forEach((g) => scene.remove(g));
+    parkGroups.clear();
+    govGroups.forEach((g) => scene.remove(g));
+    govGroups.clear();
+    streetlightGroups.forEach(({ group, light }) => {
+      scene.remove(group);
+      scene.remove(light);
+    });
+    streetlightGroups.clear();
+    cars.forEach((c) => scene.remove(c.mesh));
+    cars.length = 0;
+    pedestrians.forEach((p) => scene.remove(p.mesh));
+    pedestrians.length = 0;
+    trains.forEach((t) => scene.remove(t.mesh));
+    trains.length = 0;
+    if (heatmapVisible) {
+      hideHeatmap();
+      heatmapVisible = false;
+      document.getElementById('heatmap-toggle-btn').classList.remove('active');
+    }
+
+    for (let x = 0; x < GRID_SIZE; x++) {
+      for (let z = 0; z < GRID_SIZE; z++) {
+        tileTypes[x][z] = 'empty';
+        railTiles[x][z] = false;
+        riverTiles[x][z] = false;
+        buildingLevel[x][z] = 0;
+      }
+    }
+    roadCount = 0;
+    railCount = 0;
+  }
+
+  function applyLoadedState(data) {
+    clearSceneObjects();
+    restoringState = true;
+    funds = Number.MAX_SAFE_INTEGER;
+
+    for (let x = 0; x < GRID_SIZE; x++) {
+      for (let z = 0; z < GRID_SIZE; z++) {
+        if (data.riverTiles[x][z]) markRiverTile(x, z);
+      }
+    }
+
+    for (let x = 0; x < GRID_SIZE; x++) {
+      for (let z = 0; z < GRID_SIZE; z++) {
+        const t = data.tileTypes[x][z];
+        if (t === 'road') addRoad(x, z);
+        else if (ZONE_TYPES.includes(t)) addZone(x, z, t);
+      }
+    }
+
+    for (let x = 0; x < GRID_SIZE; x++) {
+      for (let z = 0; z < GRID_SIZE; z++) {
+        const level = data.buildingLevel[x][z];
+        const t = data.tileTypes[x][z];
+        if (level > 0 && ZONE_TYPES.includes(t)) setBuilding(x, z, t, level);
+      }
+    }
+
+    for (let x = 0; x < GRID_SIZE; x++) {
+      for (let z = 0; z < GRID_SIZE; z++) {
+        if (data.railTiles[x][z]) addRail(x, z);
+      }
+    }
+
+    (data.stations || []).forEach((key) => {
+      const [x, z] = key.split(',').map(Number);
+      addStation(x, z);
+    });
+    (data.parks || []).forEach((key) => {
+      const [x, z] = key.split(',').map(Number);
+      addPark(x, z);
+    });
+    (data.govs || []).forEach((key) => {
+      const [x, z] = key.split(',').map(Number);
+      addGov(x, z);
+    });
+    (data.streetlights || []).forEach((key) => {
+      const [x, z] = key.split(',').map(Number);
+      addStreetlight(x, z);
+    });
+
+    restoringState = false;
+    funds = data.funds;
+    debt = data.debt;
+    if (data.gameDate) {
+      gameDate.year = data.gameDate.year;
+      gameDate.month = data.gameDate.month;
+    }
+    if (typeof data.dayTime === 'number') dayTime = data.dayTime;
+
+    recomputeStats();
+    updateDayNight();
+    updateHud();
+  }
+
+  function loadGame() {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      return false;
+    }
+    applyLoadedState(data);
+    return true;
+  }
+
   let lastFrameTime = performance.now();
   const TICK_INTERVAL = 2; // 1ヶ月あたりの実時間（秒）@ 1x
   let tickAccumulator = 0;
@@ -1586,6 +1769,8 @@
     controls.update();
     renderer.render(scene, camera);
   }
+
+  loadGame(); // セーブデータがあれば、初期生成したマップを上書きして復元する
   updateDayNight();
   animate();
 })();
