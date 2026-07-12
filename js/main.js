@@ -1582,6 +1582,14 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
+  // HUDの高さは内容量で変わるため、ツールパレットが被らないよう実測して追従させる
+  const hudEl = document.getElementById('hud');
+  const updateHudBottom = () => {
+    document.documentElement.style.setProperty('--hud-bottom', `${hudEl.getBoundingClientRect().bottom}px`);
+  };
+  new ResizeObserver(updateHudBottom).observe(hudEl);
+  updateHudBottom();
+
   window.addEventListener('beforeunload', saveGame);
 
   // --- セーブ／ロード（localStorage） ---
