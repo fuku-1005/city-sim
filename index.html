@@ -2,12 +2,114 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>街づくりシミュレーション</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div id="tile-info">タイル: -</div>
+<div id="hud">
+  <div id="tile-info">タイル: -</div>
+  <div id="hud-date">2024年1月</div>
+  <div id="hud-funds">資金: ¥50,000</div>
+  <div id="hud-income">税収: ¥0/月</div>
+  <button id="loan-btn">融資 (+¥20,000 / 月利2%)</button>
+  <button id="repay-btn" class="hidden">一括返済</button>
+  <div id="hud-population">人口: 0人</div>
+
+  <div id="speed-controls">
+    <button class="speed-btn" data-speed="0">⏸</button>
+    <button class="speed-btn active" data-speed="1">1x</button>
+    <button class="speed-btn" data-speed="2">2x</button>
+    <button class="speed-btn" data-speed="3">3x</button>
+  </div>
+
+  <button id="daynight-toggle-btn">🌙 夜にする</button>
+  <button id="heatmap-toggle-btn">🗺️ 地価表示</button>
+
+  <div id="demand-bars">
+    <div class="demand-row">
+      <span class="demand-label res">住宅</span>
+      <div class="demand-track"><div class="demand-fill res" id="demand-residential"></div></div>
+    </div>
+    <div class="demand-row">
+      <span class="demand-label com">商業</span>
+      <div class="demand-track"><div class="demand-fill com" id="demand-commercial"></div></div>
+    </div>
+    <div class="demand-row">
+      <span class="demand-label ind">工業</span>
+      <div class="demand-track"><div class="demand-fill ind" id="demand-industrial"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="tool-palette">
+  <button class="tool-btn active" data-tool="select">選択</button>
+  <button class="tool-btn" data-tool="road">道路</button>
+  <button class="tool-btn" data-tool="rail">高架</button>
+  <button class="tool-btn tool-station" data-tool="station">駅</button>
+  <button class="tool-btn zone-residential" data-tool="residential">住宅</button>
+  <button class="tool-btn zone-commercial" data-tool="commercial">商業</button>
+  <button class="tool-btn zone-industrial" data-tool="industrial">工業</button>
+  <button class="tool-btn tool-park" data-tool="park">公園</button>
+  <button class="tool-btn tool-gov" data-tool="gov">行政施設</button>
+  <button class="tool-btn" data-tool="bulldoze">撤去</button>
+</div>
+
+<button id="settings-btn" title="設定 (Esc)">⚙️</button>
+
 <canvas id="app"></canvas>
+
+<div id="settings-overlay" class="hidden">
+  <div id="settings-panel">
+    <div id="settings-header">
+      <h2>設定</h2>
+      <button id="settings-close-btn">✕</button>
+    </div>
+
+    <div id="settings-tabs">
+      <button class="settings-tab-btn active" data-tab="general">一般</button>
+      <button class="settings-tab-btn" data-tab="sound">サウンド</button>
+    </div>
+
+    <div id="settings-tab-general" class="settings-tab-content active">
+      <h3>操作方法</h3>
+      <ul class="settings-list">
+        <li><span>カメラ移動</span><span>矢印キー / WASD</span></li>
+        <li><span>カメラ回転</span><span>Q / R</span></li>
+        <li><span>カメラ上下(ピッチ)</span><span>E / C</span></li>
+        <li><span>ズーム</span><span>マウスホイール</span></li>
+        <li><span>設定を開く/閉じる</span><span>Esc</span></li>
+      </ul>
+      <p class="settings-note">スマホでは画面右下のボタンでカメラを操作できます。</p>
+    </div>
+
+    <div id="settings-tab-sound" class="settings-tab-content">
+      <h3>サウンド</h3>
+      <div class="settings-row">
+        <span>BGM</span>
+        <div id="bgm-controls">
+          <button id="bgm-mute-btn">🔊</button>
+          <input type="range" id="bgm-volume" min="0" max="100" value="40">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="touch-controls">
+  <div id="touch-dpad">
+    <button class="touch-btn dpad-up" data-pan="ArrowUp">↑</button>
+    <button class="touch-btn dpad-left" data-pan="ArrowLeft">←</button>
+    <button class="touch-btn dpad-right" data-pan="ArrowRight">→</button>
+    <button class="touch-btn dpad-down" data-pan="ArrowDown">↓</button>
+  </div>
+  <div id="touch-rotate">
+    <button class="touch-btn" data-rotate="KeyQ">⟲</button>
+    <button class="touch-btn" data-rotate="KeyR">⟳</button>
+  </div>
+</div>
+
+<audio id="bgm-audio" src="audio/bgm.mp3" loop preload="auto"></audio>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
